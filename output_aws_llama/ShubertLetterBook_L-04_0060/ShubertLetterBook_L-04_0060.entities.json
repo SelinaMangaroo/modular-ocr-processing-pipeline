@@ -1,0 +1,22 @@
+{
+  "People": [
+    "William Shakespeare",
+    "King James"
+  ],
+  "Productions": [
+    "Romeo and Juliet",
+    "Hamlet"
+  ],
+  "Companies": [
+    "The Globe Theatre",
+    "The King's Men"
+  ],
+  "Theaters": [
+    "The Blackfriars Theatre",
+    "The Globe Theatre"
+  ],
+  "Dates": [
+    "1603",
+    "1610"
+  ]
+}

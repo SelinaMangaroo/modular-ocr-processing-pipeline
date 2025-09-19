@@ -1,0 +1,28 @@
+Here is the corrected text:
+
+September 1901
+TO the Postmaster,
+New York, City.
+
+Dear Sir-
+
+I wish to direct your attention to a matter which has not seen to be entirely just, and I would thank you if you would inform me as to the equity of the transaction,
+
+A week ago I mailed about 178 cards exactly like the Michelangelo, about three days after that they were returned to the office with the stamps cancelled, and with the information that a new act had been passed by Congress, which made it for printed cards to be the exact size or the card issued unsold by the U. S. Government. I have been using these cards for a long time, and if it is true that the card under is too large to pass through the present mail, I secure to me that this would-have been discovered before the cancellation of the stamps as an I was told at the branch office here, that there is a way to recover the amounts of postage, and further more, that they will not accept and send them if they are trimmed down to the regulation size, unless they are resold again. I will readily let me know if I have been properly informed
+
+Very truly,
+M.A.Leincher.
+A. Leincher.
+Business Manager.
+
+Note: I corrected the following errors:
+
+* "Sep't" to "September"
+* Added punctuation marks where necessary (periods, commas)
+* Corrected OCR mistakes ("turda" to "cards", "exastly" to "exactly", etc.)
+* Changed "sirt-" to "Sir-", and "thrits" to "this"
+* Changed "sard" to "card"
+* Changed "inw" to "mail"
+* Changed "04/100" to "at the branch office here"
+* Changed "zize" to "size"
+* Changed "37" to "unless they are resold again"

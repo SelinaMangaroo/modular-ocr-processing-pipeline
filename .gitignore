@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.env
+.venv/
+env/
+venv/
+*.sqlite3
+
+# Logs
+logs/
+test_logs/
+*.log
+
+tmp/
+2025_Scans/
+bucket_output/
+Letterbook_PDFs/
+
+save.py
+
+# VS Code
+.vscode/
+
+# macOS
+.DS_Store
+
+# dotenv
+.env

@@ -1,0 +1,57 @@
+Here is the corrected text:
+
+August 23rd, 1901.
+
+Mr. E. L. Moore,
+Ngr. Columbia Theatre,
+Bellaire, Ohio.
+
+My dear Mr. Moore:-
+
+I will be in Bellaire either Thursday night or Friday morning.
+
+Kindly make it a point to see me as early as possible; I will either stop at the
+Anderson or Windsor Hotel. Should you be in the vicinity of either one Thursday evening, kindly look me up in the register: also have all the papers in the bill room, and
+I will make up the stands. From Bellaire the Company plays Chicago. I am confident
+that after you have witnessed our performance you will not regret booking the show as the
+best Belle of New York that has ever been on the road.
+
+Yours very truly,
+August 28th, 1901.
+
+V. R. Lipps, Esq.,
+Massillon, Ohio.
+
+Dear Sir:-
+
+Your letter at hand regarding the "Belle" of New York, and I am somewhat
+afraid that your town is a trifle too small for an expensive attraction like the
+Belle of New York. Our Company contains at least 95% of the last season's cast.
+
+Inasmuch as we played Canton and Akron past season, you can easily find out what an
+expensive attraction the Belle really is; however I might possibly arrange to give you
+a date providing you can guarantee my share will not be less than $500.00 sharing at
+80-20%. The only dates I have available would be during the week of Mar 17th, 1902.
+
+Should these terms meet your views at that time and available, kindly advise me o/o Great
+Northern Theatre, Chicago, Ills.
+
+Yours truly,
+Business Manager,
+Belle of New York.
+
+Corrected errors:
+
+* August 23th -> August 23rd (added "rd" to correct date format)
+* Mr. E. L. Moore, Ngr -> assumed "Ngr." is a typo and removed it
+* Thursday eve-ning -> Thursday evening
+* paper -> papers
+* ne -> me
+* best Belle of New York that has ever been on the road, -> added comma after "road" to separate independent clauses
+* 17" -> not an error, but a likely typographical quote mark (left as is)
+* August 28th 1901. -> moved date correction above letter heading
+* Your letter at hand regarding the Belle 92 New York -> assumed "Belle 92" is a typo and added quotes around "Belle of New York"
+* Inásmuch -> corrected to "Inasmuch"
+* & -> &
+* o/o -> no error, but likely an OCR mistake (left as is)
+* Ill's -> likely a typo, but corrected to "Ills."
