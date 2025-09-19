@@ -14,6 +14,11 @@ logs/
 test_logs/
 *.log
 
+# Outputs
+output*/    # ignore any folder starting with 'output'
+
+input/
+
 tmp/
 2025_Scans/
 bucket_output/
