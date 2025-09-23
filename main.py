@@ -4,15 +4,8 @@ import time
 import importlib
 from dotenv import load_dotenv
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from utils.helpers import (initialize_logging, split_into_batches, clean_tmp_folder, log_runtime)
 
-from utils.helpers import (
-    initialize_logging,
-    split_into_batches,
-    clean_tmp_folder,
-    log_runtime
-)
-
-# --- Load environment variables ---
 load_dotenv()
 bucket_name = os.environ.get("BUCKET_NAME")
 region = os.environ.get("REGION")
@@ -41,15 +34,14 @@ elif llm_provider_name == "llama":
 else:
     raise ValueError(f"Unknown LLM_PROVIDER: {llm_provider_name}")
 
-# --- Initialize logging ---
 initialize_logging()
 logging.info("OCR processing pipeline started.")
 
 start_time = time.time()
 
 # --- import provider modules ---
-ocr_module = importlib.import_module(f"providers.{ocr_provider_name}_provider")
-llm_module = importlib.import_module(f"utils.{llm_provider_name}_utils")
+ocr_module = importlib.import_module(f"ocr_providers.{ocr_provider_name}_provider")
+llm_module = importlib.import_module(f"llms.{llm_provider_name}")
 
 if not input_dir or not os.path.isdir(input_dir):
     logging.error("INPUT_DIR is not set or does not exist.")
@@ -73,16 +65,7 @@ for batch_index, current_batch in enumerate(batches):
     # --- Prepare files in parallel ---
     with ThreadPoolExecutor(max_workers=max_threads) as executor:
         futures = [
-            executor.submit(
-                ocr_module.prepare_file,
-                filename,
-                tmp_dir,
-                input_dir,
-                output_dir,
-                image_magick_command,
-                bucket_name,
-                region
-            )
+            executor.submit(ocr_module.prepare_file, filename, tmp_dir, input_dir, output_dir, image_magick_command, bucket_name, region)
             for filename in current_batch
         ]
         for future in as_completed(futures):
@@ -94,14 +77,7 @@ for batch_index, current_batch in enumerate(batches):
     # --- Process results in parallel ---
     with ThreadPoolExecutor(max_workers=max_threads) as executor:
         futures = [
-            executor.submit(
-                ocr_module.process_file,
-                base_name,
-                job_info,
-                llm_module,
-                model_name,
-                api_key
-            )
+            executor.submit(ocr_module.process_file, base_name, job_info, llm_module, model_name, api_key)
             for base_name, job_info in jobs.items()
         ]
         for future in as_completed(futures):

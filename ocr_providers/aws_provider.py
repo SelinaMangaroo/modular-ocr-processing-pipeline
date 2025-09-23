@@ -3,21 +3,10 @@ import logging
 import json
 import boto3
 from botocore.config import Config
-
 from utils.helpers import get_file_paths, convert_to_pdf
-from utils.aws_utils import (
-    upload_file_to_s3,
-    start_textract_job,
-    wait_for_completion,
-    extract_and_save_text_and_coords,
-    delete_all_files_in_bucket,
-)
+from utils.aws_utils import (upload_file_to_s3, start_textract_job, wait_for_completion, extract_and_save_text_and_coords, delete_all_files_in_bucket)
 
 def prepare_file(filename, tmp_dir, input_dir, output_dir, image_magick_command, bucket_name, region):
-    """
-    Convert file to PDF (if needed), upload to S3, and start Textract job.
-    Returns job info dict for process_file().
-    """
     try:
         boto_config = Config(max_pool_connections=16)
         s3 = boto3.client("s3", region_name=region, config=boto_config)
@@ -27,7 +16,6 @@ def prepare_file(filename, tmp_dir, input_dir, output_dir, image_magick_command,
         base_name = paths["base_name"]
         os.makedirs(paths["doc_output_dir"], exist_ok=True)
 
-        # Ensure PDF
         ext = os.path.splitext(filename)[1].lower()
         pdf_to_upload = paths["pdf_file"] if ext != ".pdf" else paths["path_to_file"]
 
@@ -50,12 +38,7 @@ def prepare_file(filename, tmp_dir, input_dir, output_dir, image_magick_command,
         logging.error(f"[AWS PREP ERROR] {filename}: {e}")
         return None
 
-
 def process_file(base_name, job_info, llm_module, model_name, api_key):
-    """
-    Run AWS Textract OCR, save raw text + coords, then send through LLM pipeline.
-    Saves: .corrected.txt, .entities.json, .combined_output.json
-    """
     try:
         # AWS clients
         boto_config = Config(max_pool_connections=16)
@@ -111,6 +94,5 @@ def process_file(base_name, job_info, llm_module, model_name, api_key):
 
         # Cleanup bucket
         delete_all_files_in_bucket(s3, job_info["bucket_name"])
-
     except Exception as e:
         logging.error(f"[AWS PROCESS ERROR] {base_name}: {e}")

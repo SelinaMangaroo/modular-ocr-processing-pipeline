@@ -7,10 +7,6 @@ from azure.core.credentials import AzureKeyCredential
 from utils.helpers import get_file_paths, convert_to_pdf, resize_image
 
 def prepare_file(filename, tmp_dir, input_dir, output_dir, image_magick_command, bucket_name=None, region=None):
-    """
-    Convert or resize file as needed and prepare for Azure OCR.
-    Returns job info dict for process_file().
-    """
     try:
         paths = get_file_paths(filename, tmp_dir, input_dir, output_dir)
         base_name = paths["base_name"]
@@ -36,14 +32,6 @@ def prepare_file(filename, tmp_dir, input_dir, output_dir, image_magick_command,
         return None
 
 def process_file(base_name, job_info, llm_module, model_name, api_key):
-    """
-    Run Azure Document Intelligence OCR and save:
-        - .raw.txt (full text)
-        - .coords.json (lines + bounding boxes)
-        - .corrected.txt (LLM-corrected text)
-        - .entities.json (LLM entities)
-        - .combined_output.json (LLM combined output)
-    """
     try:
         endpoint = os.getenv("AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT")
         key = os.getenv("AZURE_DOCUMENT_INTELLIGENCE_KEY")
