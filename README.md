@@ -194,6 +194,7 @@ LLAMA_MODEL=llama3.1:8b
 ### Environment Variable Explanations
 
 | General Variables                    | Description                                                                             |
+| ------------------------------------ | --------------------------------------------------------------------------------------- |
 | `MAX_THREADS`                        | Number of threads to use for parallel processing. Improves speed for large batches.     |
 | `BATCH_SIZE`                         | Number of documents to process per batch. Helps control memory and API usage.           |
 | `TMP_DIR`                            | Local temporary folder used for processing intermediate files.                          |
