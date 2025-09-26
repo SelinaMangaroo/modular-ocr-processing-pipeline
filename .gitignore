@@ -14,6 +14,9 @@ logs/
 test_logs/
 *.log
 
+# Tests
+tests/
+
 # Outputs
 output*/    # ignore any folder starting with 'output'
 
