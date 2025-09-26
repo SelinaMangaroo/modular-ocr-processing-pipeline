@@ -1,22 +1,34 @@
-# OCR Processing Pipeline
+# Modular OCR Processing Pipeline
 
-This project is a batch OCR (Optical Character Recognition) pipeline that uses **AWS Textract** and **OpenAI's ChatGPT** to process scanned .jpg images. It extracts raw text, corrects OCR errors, and structures key entities (e.g. people, companies, dates) from historical documents such as theater letters.
+This project is a **modular, batch OCR (Optical Character Recognition) pipeline** that can use multiple providers for both OCR and LLM (Large Language Model) post-processing.  
+
+It extracts raw text from scanned documents (e.g. historical theater letters), corrects OCR errors, and structures key entities like people, productions, companies, theaters, and dates.  
 
 ---
 
 ## Features
 
-- Converts .jpg images to .pdf using ImageMagick
-- Runs asynchronous AWS Textract OCR jobs
-- Uses OpenAI's GPT to:
-  - Correct OCR errors
-  - Extract entities and other metadata
-- S3 uploads & automatic cleanup after processing 
-- Supports batching with configurable size
-- Structured output: raw text, corrected text, entity JSON
-- Logs all operations to timestamped log files
-- Includes word count + Levenshtein distance validation via pytest
-- Optimized with parallel processing (ThreadPoolExecutor)
+- **Multiple OCR providers**:  
+  - AWS Textract (requires S3 + Textract setup)  
+  - Azure Document Intelligence  
+- **Multiple LLM providers** for post-processing:  
+  - OpenAI ChatGPT  
+  - Anthropic Claude  
+  - Local LLaMA via Ollama  
+- **Pre-processing**:  
+  - Converts `.jpg/.png/.tiff` images to `.pdf` via ImageMagick  
+- **Post-processing**:  
+  - Corrects OCR errors  
+  - Extracts structured entities (names, productions, dates, etc.)  
+  - Splits corrected text into letters per page  
+- **Batch support** with configurable size and multithreaded execution  
+- **Structured outputs**:  
+  - `.raw.txt` – raw OCR text  
+  - `.corrected.txt` – LLM-corrected text  
+  - `.coords.json` – bounding box coordinates (from OCR)  
+  - `.entities.json` – structured metadata  
+  - `.combined_output.json` – split letters with page references  
+- **Logging**: all operations logged to timestamped log files  
 
 ---
 
@@ -24,24 +36,30 @@ This project is a batch OCR (Optical Character Recognition) pipeline that uses *
 
 ```
 ocr-processing-pipeline/
-├── utils/                        # Utility modules 
-│   ├── aws_utils.py              # AWS Textract, S3, and OCR logic
-│   ├── chatgpt_utils.py          # GPT-based text correction and entity extraction
-│   ├── helpers.py                # PDF conversion, logging, etc.
-├── tests/                        # Pytest test suite
-│   ├── test_wordcount.py         # Test: word count differences
-│   ├── test_levenshtein_distance.py  # Test: text delta magnitude
-│   ├── test_chatgpt_consistency.py   # Test: GPT output stability
-│   └── test_utils.py             # Shared test utilities
-├── test_logs/                    # Runtime test logs
 ├── logs/                         # Runtime logs
 ├── output/                       # Output text, JSON, corrected results
 ├── venv/                         # Virtual environment (not tracked in version control)
+├── .env                          # Environment config
+├── .gitignore
+├── PROJECT_STRUCTURE.md
+├── README.md
+├── input
+├── llms
+│   ├── chatgpt.py                # OpenAI GPT integration
+│   ├── claude.py                 # Anthropic Claude integration
+│   └── llama.py                  # Local LLaMA (Ollama) integration
 ├── main.py                       # Entry point for the pipeline
-├── .env                          # Configuration variables     
-├── .gitignore                    # Specifies files/directories to exclude from Git
-├── README.md                     # Project documentation
-├── requirements.txt              # List of dependencies
+├── ocr_providers                 # OCR backends
+│   ├── aws_provider.py           # AWS Textract implementation
+│   └── azure_provider.py         # Azure Document Intelligence implementation
+├── prompts.json                  # Shared LLM prompts
+├── requirements.txt              # Python dependencies
+├── schemas
+│   └── llm_schemas.py            # Pydantic schemas for structured outputs
+└── utils
+    ├── aws_utils.py              # AWS helpers
+    └── helpers.py                # File prep, batching, logging
+
 ```
 
 ---
@@ -51,8 +69,8 @@ ocr-processing-pipeline/
 1. Clone the repository:
 
 ```bash
-git clone https://github.com/SelinaMangaroo/ocr-processing-pipeline.git
-cd ocr-processing-pipeline
+git clone https://github.com/SelinaMangaroo/modular-ocr-processing-pipeline.git
+cd modular-ocr-processing-pipeline
 ```
 
 2. Create a virtual environment and install dependencies:
@@ -66,7 +84,7 @@ pip install -r requirements.txt
 
 ```
 brew install imagemagick # macOS
-sudo apt install imagemagick  # Debian/Ubuntu
+sudo apt install imagemagick  # Linux
 ```
 
 ---
@@ -138,32 +156,54 @@ OPENAI_MODEL=gpt-4o-mini  # or gpt-4, gpt-3.5-turbo, etc.
 3. Set up your .env file with the following keys:
 
 ```
-AWS_ACCESS_KEY_ID=EXAMPLEACCESSKEYID (optional)
-AWS_SECRET_ACCESS_KEY=EXAMPLESECRETACCESSKEY (optional)
-BUCKET_NAME=your_s3_bucket_name
-REGION=us-east-1
-TEXTRACT_MAX_RETRIES=120
-TEXTRACT_DELAY=5
+# General
 MAX_THREADS=8
 BATCH_SIZE=10
-
-OPENAI_API_KEY=your_openai_key
-OPENAI_MODEL=gpt-4o-mini
-
 TMP_DIR=./tmp
 INPUT_DIR=./input
 OUTPUT_DIR=./output
+IMAGE_MAGICK_COMMAND=magick   # "convert" on Linux
 
-IMAGE_MAGICK_COMMAND=magick
+# OCR provider: aws | azure
+OCR_PROVIDER=aws
 
-TEST_LEVENSHTEIN_MAX_DIFF_RATIO=0.15
-TEST_WORD_COUNT_TOLERANCE=0.15
-TEST_GPT_REPEAT_CORRECTIONS=10
-TEST_TARGET_FILE=EXAMPLE_FILE
+# LLM provider: chatgpt | claude | llama
+LLM_PROVIDER=chatgpt
+
+# AWS (only if OCR_PROVIDER=aws)
+BUCKET_NAME=your-s3-bucket
+REGION=us-east-1
+AWS_ACCESS_KEY_ID=EXAMPLEACCESSKEYID (optional)
+AWS_SECRET_ACCESS_KEY=EXAMPLESECRETACCESSKEY (optional)
+TEXTRACT_MAX_RETRIES=120
+TEXTRACT_DELAY=5
+
+# OpenAI (only if LLM_PROVIDER=chatgpt)
+OPENAI_API_KEY=your-openai-key
+OPENAI_MODEL=gpt-4o-mini
+
+# Anthropic (only if LLM_PROVIDER=claude)
+ANTHROPIC_API_KEY=your-anthropic-key
+CLAUDE_MODEL=claude-3-7-sonnet-20250219
+
+# Ollama (only if LLM_PROVIDER=llama)
+LLAMA_MODEL=llama3.1:8b
+
 ```
+
 ### Environment Variable Explanations
 
-| Variable                             | Description                                                                             |
+| General Variables                    | Description                                                                             |
+| `MAX_THREADS`                        | Number of threads to use for parallel processing. Improves speed for large batches.     |
+| `BATCH_SIZE`                         | Number of documents to process per batch. Helps control memory and API usage.           |
+| `TMP_DIR`                            | Local temporary folder used for processing intermediate files.                          |
+| `INPUT_DIR`                          | Local folder containing input images or PDFs for processing.                            |
+| `OUTPUT_DIR`                         | Folder where the corrected text, entities and other output is stored.                   |
+| `IMAGE_MAGICK_COMMAND`               | CLI command for ImageMagick (`magick` on macOS, `convert` on Linux).                    |
+| `OCR_PROVIDER`                       | Provider for the OCR Service                                                            |
+| `LLM_PROVIDER`                       | Provider for the LLM Service                                                            |
+
+| AWS Variables                        | Description                                                                             |
 | ------------------------------------ | --------------------------------------------------------------------------------------- |
 | `AWS_ACCESS_KEY_ID` *(optional)*     | AWS IAM access key. Required only if not using `~/.aws/credentials`.                    |
 | `AWS_SECRET_ACCESS_KEY` *(optional)* | AWS IAM secret access key. Only used if the above is set.                               |
@@ -171,18 +211,25 @@ TEST_TARGET_FILE=EXAMPLE_FILE
 | `REGION`                             | AWS region where your S3 bucket and Textract are hosted (e.g., `us-east-1`).            |
 | `TEXTRACT_MAX_RETRIES`               | Max retries while polling for Textract job completion.                                  |
 | `TEXTRACT_DELAY`                     | Delay (in seconds) between retries while waiting for Textract to finish.                |
-| `MAX_THREADS`                        | Number of threads to use for parallel processing. Improves speed for large batches.     |
-| `BATCH_SIZE`                         | Number of documents to process per batch. Helps control memory and API usage.           |
-| `OPENAI_API_KEY`                     | Your OpenAI API key for accessing GPT models.                                           |
-| `OPENAI_MODEL`                       | GPT model to use (`gpt-4o-mini`, `gpt-4`, `gpt-3.5-turbo`, etc.).                       |
-| `TMP_DIR`                            | Local temporary folder used for processing intermediate files.                          |
-| `INPUT_DIR`                          | Local folder containing input images or PDFs for processing.                            |
-| `OUTPUT_DIR`                         | Folder where the corrected text, entities and other output is stored.                   |
-| `IMAGE_MAGICK_COMMAND`               | CLI command for ImageMagick (`magick` on macOS, `convert` on Linux).                    |
-| `TEST_LEVENSHTEIN_MAX_DIFF_RATIO`    | Max allowed difference ratio (0–1) for Levenshtein test. Flags major ChatGPT edits.     |
-| `TEST_WORD_COUNT_TOLERANCE`          | Allowed word count difference ratio (0–1) between raw and corrected text.               |
-| `TEST_GPT_REPEAT_CORRECTIONS`        | Number of times to re-run GPT correction to test consistency across runs.               |
-| `TEST_TARGET_FILE`                   | Run tests on a specific file. If not set, tests apply to all available files.           |
+
+| Azure Variables                       | Description                                                                            |
+| ------------------------------------- | -------------------------------------------------------------------------------------- |
+| `AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT`| Endpoint needed for the Read API Service.                                              |
+| `AZURE_DOCUMENT_INTELLIGENCE_KEY`     | Key needed for the Read API Service.                                                   |
+
+| OpenAI Variables                      | Description                                                                            |
+| ------------------------------------- | -------------------------------------------------------------------------------------- |
+| `OPENAI_API_KEY`                      | Your OpenAI API key for accessing GPT models.                                          |
+| `OPENAI_MODEL`                        | GPT model to use (`gpt-4o-mini`, `gpt-4`, `gpt-3.5-turbo`, etc.).                      |
+
+| Claude Variables                      | Description                                                                            |
+| ------------------------------------- | -------------------------------------------------------------------------------------- |
+| `ANTHROPIC_API_KEY`                   | Your Anthropic API key for accessing Claude models.                                    |
+| `CLAUDE_MODEL`                        | Claude model to use.                                                                   |
+
+| LLAMA Variables                       | Description                                                                            |
+| ------------------------------------- | -------------------------------------------------------------------------------------- |
+| `LLAMA_MODEL`                         | Llama model to use.                                                                    |
 
 
 1. Run the pipeline:
@@ -192,40 +239,16 @@ python main.py
 
 ---
 
-## Testing
-Testing is done using `pytest`. 
-
-The `tests/` directory contains word count consistency tests to verify corrections didn't significantly alter content.
-
-Run all tests:
-```
-pytest
-```
-
-Run a specific test:
-```
-pytest tests/test_wordcount.py
-```
-
-### Test Suite Overview
-
-| Test File                      | Description                                                       |
-| ------------------------------ | ----------------------------------------------------------------- |
-| `test_wordcount.py`            | Compares the word count between raw OCR text and GPT-corrected output. Fails if the difference exceeds the threshold set in `TEST_WORD_COUNT_TOLERANCE`. Helps detect overcorrection or content loss.           |
-| `test_levenshtein_distance.py` | Calculates the Levenshtein distance ratio between raw and corrected text. Fails if the ratio exceeds `TEST_LEVENSHTEIN_MAX_DIFF_RATIO`. Useful for catching excessive edits.                              |
-| `test_chatgpt_consistency.py`  | Runs GPT correction multiple times on the same input (`TEST_GPT_REPEAT_CORRECTIONS`) and compares results. Flags inconsistencies in word count or Levenshtein distance across runs. Validates output stability.       |
-
----
 
 ## Logs & Outputs
 
 Logs: /logs/MM-DD-YYYY_HH-MM-SS.log
-Test Logs: /test_logs/test_MM-DD-YYYY_HH-MM-SS.log
+Outputs: stored in OUTPUT_DIR/<filename>/
 
 Outputs:
 
-- .raw.txt (original Textract output)
-- .corrected.txt (GPT-corrected text)
+- .raw.txt (original raw text output)
+- .corrected.txt (llm-corrected text)
 - .coords.json (bounding box info)
 - .entities.json (structured entities)
 - .combined_output.json (page numbers and split letters)
