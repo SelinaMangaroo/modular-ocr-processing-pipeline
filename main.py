@@ -40,8 +40,11 @@ service_options = {}
 if ocr_provider == "aws":
     bucket_name = os.getenv("BUCKET_NAME")
     region = os.getenv("REGION")
-    if not bucket_name and region:
-        logging.warning("[AWS] BUCKET_NAME or REGION not set — this may cause errors")
+    if not bucket_name or not region:
+        logging.error("[AWS] BUCKET_NAME or REGION not set — this will cause errors")
+    else:
+        service_options["bucket_name"] = bucket_name
+        service_options["region"] = region
 
 # --- Setup logging ---
 initialize_logging()
