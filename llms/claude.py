@@ -53,7 +53,7 @@ def extract_page_and_split_letters(corrected_text_path, client, model_name) -> C
     if not lines:
         return CombinedOutput(page_number=None, letters=[])
 
-    # Try to parse first line as page number
+    # first line as page number
     first_line = lines[0].strip()
     full_text = "".join(lines)
     try:
