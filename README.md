@@ -135,13 +135,13 @@ Textract works with PDF files stored in S3. The pipeline will automatically conv
 
 Azure’s Document Intelligence service can extract printed/handwritten text and layout information.
 
-1. Create a Resource
+### Create a Resource
 
 - Create an Azure account if you don't already have one and go to the Azure Portal
 - Create a Document Intelligence resource.
 - Note down your Endpoint URL and API Key.
 
-2. Set Environment Variables
+### Set Environment Variables
 
 In your .env file:
 
@@ -153,7 +153,6 @@ AZURE_DOCUMENT_INTELLIGENCE_KEY=your-azure-api-key
 The pipeline uses the prebuilt-read model by default.
 
 ---
-
 
 ## OpenAI API Setup (ChatGPT)
 
@@ -178,7 +177,57 @@ OPENAI_MODEL=gpt-4o-mini  # or gpt-4, gpt-3.5-turbo, etc.
 
 ---
 
-3. Set up your .env file with the following keys:
+## Anthropic Claude Setup
+
+Claude is Anthropic’s LLM, accessed via the Anthropic Python SDK.
+
+### Get an API Key
+
+Create an account at Anthropic.
+Go to your API Keys page and generate a key.
+
+### Set Environment Variables
+
+In your `.env` file, add the following:
+
+```env
+ANTHROPIC_API_KEY=your-anthropic-api-key
+CLAUDE_MODEL=claude-3-7-sonnet-20250219
+```
+
+The CLAUDE_MODEL can be swapped with other Claude models.
+
+---
+
+## LLaMA (Ollama) Setup
+
+LLaMA is Meta’s open-source LLM. This pipeline integrates via Ollama, which runs models locally.
+
+### Install Ollama
+
+Follow instructions at ollama.ai/download to install on macOS/Linux.
+
+### Pull a Model
+
+For example:
+
+```
+ollama pull llama3.1:8b
+```
+
+### Set Environment Variables
+
+In your `.env` file, add the following:
+
+```env
+LLAMA_MODEL=llama3.1:8b
+```
+
+No API key is needed — Ollama runs locally.
+
+---
+
+1. Set up your .env file with the following keys:
 
 ```
 # General
