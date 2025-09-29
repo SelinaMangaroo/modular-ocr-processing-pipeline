@@ -130,6 +130,31 @@ Textract works with PDF files stored in S3. The pipeline will automatically conv
 
 ---
 
+
+## Azure Document Intelligence Setup
+
+Azure’s Document Intelligence service can extract printed/handwritten text and layout information.
+
+1. Create a Resource
+
+- Create an Azure account if you don't already have one and go to the Azure Portal
+- Create a Document Intelligence resource.
+- Note down your Endpoint URL and API Key.
+
+2. Set Environment Variables
+
+In your .env file:
+
+```env
+AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT=https://<your-resource-name>.cognitiveservices.azure.com/
+AZURE_DOCUMENT_INTELLIGENCE_KEY=your-azure-api-key
+```
+
+The pipeline uses the prebuilt-read model by default.
+
+---
+
+
 ## OpenAI API Setup (ChatGPT)
 
 The ChatGPT API is integrated via the `openai` Python package to post-process text extracted by Textract.
