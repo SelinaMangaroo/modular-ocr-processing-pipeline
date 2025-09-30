@@ -93,6 +93,14 @@ def process_file(base_name, job_info, llm_module, model_name, api_key):
         logging.warning(f"[AWS] Entity extraction failed for {base_name}: {e}")
         entities = {}
 
+    # --- Explain entities ---
+    try:
+        explanations = llm_module.explain_entities(
+            entities, base_name, job_info["doc_output_dir"], client, model_name
+        )
+    except Exception as e:
+        logging.warning(f"[Provider] Entity explanation failed for {base_name}: {e}")
+
     # --- Split into letters ---
     combined = None
     try:

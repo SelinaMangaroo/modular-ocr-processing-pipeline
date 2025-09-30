@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Dict
 from pydantic import BaseModel
 
 class CorrectedText(BaseModel):
@@ -14,3 +14,9 @@ class EntitiesOutput(BaseModel):
 class CombinedOutput(BaseModel):
     page_number: Optional[int]
     letters: List[str]
+
+class EntityExplanations(BaseModel):
+    People: Dict[str, str]
+    Productions: Dict[str, str]
+    Companies: Dict[str, str]
+    Theaters: Dict[str, str]

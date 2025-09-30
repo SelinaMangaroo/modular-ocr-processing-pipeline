@@ -2,7 +2,7 @@ import os
 import logging
 import json
 from anthropic import Anthropic
-from schemas.llm_schemas import CorrectedText, EntitiesOutput, CombinedOutput
+from schemas.llm_schemas import CorrectedText, EntitiesOutput, CombinedOutput, EntityExplanations
 
 PROMPTS_PATH = os.path.join(os.path.dirname(__file__), "..", "prompts.json")
 with open(PROMPTS_PATH, "r", encoding="utf-8") as f:
@@ -26,25 +26,33 @@ def correct_text(text, base_name, output_dir, client, model_name) -> CorrectedTe
 
     return CorrectedText(corrected_text=corrected_text)
 
-def extract_entities(text, base_name, output_dir, client, model_name) -> EntitiesOutput:
-    logging.info(f"[Claude] Extracting entities for: {base_name}")
+def explain_entities(entities, base_name, output_dir, client, model_name) -> EntityExplanations:
+    logging.info(f"[Claude] Explaining entities for {base_name}")
+    explanations = {"People": {}, "Productions": {}, "Companies": {}, "Theaters": {}}
 
-    resp = client.messages.create(
-        model=model_name,
-        max_tokens=4096,
-        messages=[{"role": "user", "content": PROMPTS["extract_entities"] + f"\nText:\n{text}"}]
-    )
+    for category in explanations.keys():
+        items = getattr(entities, category, [])
+        for item in items:
 
-    try:
-        parsed = json.loads(resp.content[0].text.strip())
-    except json.JSONDecodeError:
-        parsed = {"People": [], "Productions": [], "Companies": [], "Theaters": [], "Dates": []}
+            resp = client.messages.create(
+                model=model_name, max_tokens=4096,
+                messages=[
+                    {"role": "system", "content": PROMPTS["explain_entities"]},
+                    {"role": "user", "content": f"Category: {category}\nEntity: {item}"}
+                ]
+            )
 
-    entities = EntitiesOutput(**parsed)
-    path = os.path.join(output_dir, base_name + ".entities.json")
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(entities.model_dump_json(indent=2))
-    return entities
+            explanation = resp.content[0].text.strip()
+            explanations[category][item] = explanation
+
+    entity_explanations = EntityExplanations(**explanations)
+
+    explain_path = os.path.join(output_dir, base_name + ".entities_explained.json")
+    with open(explain_path, "w", encoding="utf-8") as f:
+        f.write(entity_explanations.model_dump_json(indent=2))
+
+    logging.info(f"[Claude] Entity explanations saved: {explain_path}")
+    return entity_explanations
 
 def extract_page_and_split_letters(corrected_text_path, client, model_name) -> CombinedOutput:
     with open(corrected_text_path, "r", encoding="utf-8") as f:

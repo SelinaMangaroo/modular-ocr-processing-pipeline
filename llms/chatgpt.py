@@ -2,7 +2,7 @@ import os
 import logging
 import json
 from openai import OpenAI
-from schemas.llm_schemas import CorrectedText, EntitiesOutput, CombinedOutput
+from schemas.llm_schemas import CorrectedText, EntitiesOutput, CombinedOutput, EntityExplanations
 
 PROMPTS_PATH = os.path.join(os.path.dirname(__file__), "..", "prompts.json")
 with open(PROMPTS_PATH, "r", encoding="utf-8") as f:
@@ -60,6 +60,34 @@ def extract_entities(text, base_name, doc_output_dir, client, model_name) -> Ent
 
     logging.info(f"Entity extraction saved: {entity_path}")
     return entities
+
+def explain_entities(entities, base_name, doc_output_dir, client, model_name) -> EntityExplanations:
+    logging.info(f"[ChatGPT] Explaining entities for {base_name}")
+    explanations = {"People": {}, "Productions": {}, "Companies": {}, "Theaters": {}}
+
+    for category in explanations.keys():
+        items = getattr(entities, category, [])
+        for item in items:
+
+            response = client.chat.completions.create(
+                model=model_name, 
+                messages=[
+                    {"role": "system", "content": PROMPTS["explain_entities"]},
+                    {"role": "user", "content": f"Category: {category}\nEntity: {item}"}
+                ], temperature=0.2
+            )
+
+            explanation = response.choices[0].message.content.strip()
+            explanations[category][item] = explanation
+
+    entity_explanations = EntityExplanations(**explanations)
+
+    explain_path = os.path.join(doc_output_dir, base_name + ".entities_explained.json")
+    with open(explain_path, "w", encoding="utf-8") as f:
+        f.write(entity_explanations.model_dump_json(indent=2))
+
+    logging.info(f"[ChatGPT] Entity explanations saved: {explain_path}")
+    return entity_explanations
 
 def extract_page_and_split_letters(corrected_text_path, client, model_name) -> CombinedOutput:
     try:

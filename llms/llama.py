@@ -3,7 +3,7 @@ import logging
 import json
 import subprocess
 from typing import Optional
-from schemas.llm_schemas import CorrectedText, EntitiesOutput, CombinedOutput
+from schemas.llm_schemas import CorrectedText, EntitiesOutput, CombinedOutput, EntityExplanations
 
 PROMPTS_PATH = os.path.join(os.path.dirname(__file__), "..", "prompts.json")
 with open(PROMPTS_PATH, "r", encoding="utf-8") as f:
@@ -51,6 +51,26 @@ def extract_entities(text: str, base_name: str, output_dir: str, model_name: Opt
 
     logging.info(f"[LLaMA] Entities saved: {path}")
     return entities
+
+def explain_entities(entities, base_name, output_dir, model_name: Optional[str] = None, client: Optional[object] = None) -> EntityExplanations:
+    logging.info(f"[LLaMA] Explaining entities for {base_name}")
+    explanations = {"People": {}, "Productions": {}, "Companies": {}, "Theaters": {}}
+    model = model_name or os.getenv("LLAMA_MODEL", "llama3.1:8b")
+
+    for category in explanations.keys():
+        items = getattr(entities, category, [])
+        for item in items:
+            response = run_ollama(model, PROMPTS["explain_entities"] + f"\nCategory: {category}\nEntity: {item}")
+            explanations[category][item] = response.strip()
+
+    entity_explanations = EntityExplanations(**explanations)
+
+    explain_path = os.path.join(output_dir, base_name + ".entities_explained.json")
+    with open(explain_path, "w", encoding="utf-8") as f:
+        f.write(entity_explanations.model_dump_json(indent=2))
+
+    logging.info(f"[LLaMA] Entity explanations saved: {explain_path}")
+    return entity_explanations
 
 def extract_page_and_split_letters(corrected_path: str,model_name: Optional[str] = None, client: Optional[object] = None) -> CombinedOutput:
     model = model_name or os.getenv("LLAMA_MODEL", "llama3.1:8b")
