@@ -326,4 +326,5 @@ Outputs:
 - .corrected.txt (llm-corrected text)
 - .coords.json (bounding box info)
 - .entities.json (structured entities)
+- .entities_explained.json (structured entities explained)
 - .combined_output.json (page numbers and split letters)
