@@ -38,6 +38,8 @@ def convert_to_pdf(file_path, pdf_path, image_magick_command="convert", filename
         filename (str): Name of the file being processed, for logging purposes.
     """
     try:
+        # Make sure tmp dir exists
+        os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
         logging.info(f"Converting {filename} to PDF...")
         subprocess.run([image_magick_command, file_path, pdf_path], check=True)
     except subprocess.CalledProcessError as e:
@@ -92,20 +94,17 @@ def initialize_logging(log_dir="logs"):
 
     logging.info("Logging initialized.")
     return log_path
-
-def log_runtime(start_time):
+    
+def log_runtime(start_time, label="Pipeline"):
     """
-    Logs the total runtime of the script.
+    Logs the runtime of a stage or full pipeline.
     Args:
-        start_time (float): Start time of the script.
+        start_time (float): Start time of the stage/pipeline.
+        label (str): Label to describe what completed.
     """
     hrs, rem = divmod(time.time() - start_time, 3600)
     mins, secs = divmod(rem, 60)
-    logging.info(f"Pipeline completed in {int(hrs)}h {int(mins)}m {int(secs)}s.")
-
-import subprocess
-import logging
-import os
+    logging.info(f"{label} completed in {int(hrs)}h {int(mins)}m {int(secs)}s.")
 
 def resize_image(file_path, output_path, image_magick_command="convert", filename="", max_dim="2000x2000>"):
     try:
@@ -116,8 +115,8 @@ def resize_image(file_path, output_path, image_magick_command="convert", filenam
             image_magick_command,
             file_path,
             "-resize", max_dim,
-            "-strip",       # remove metadata
-            "-quality", "85",  # for JPG/PNG compression
+            "-strip",       
+            "-quality", "85", 
             output_path
         ]
         subprocess.run(cmd, check=True)

@@ -14,9 +14,10 @@ class EntitiesOutput(BaseModel):
 class CombinedOutput(BaseModel):
     page_number: Optional[int]
     letters: List[str]
-
+    
 class EntityExplanations(BaseModel):
     People: Dict[str, str]
     Productions: Dict[str, str]
     Companies: Dict[str, str]
     Theaters: Dict[str, str]
+    Dates: Dict[str, str] 

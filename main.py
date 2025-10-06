@@ -6,6 +6,8 @@ from dotenv import load_dotenv
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from utils.helpers import initialize_logging, split_into_batches, clean_tmp_folder, log_runtime
 
+
+start_time = time.time()
 # --- Load environment variables ---
 load_dotenv()
 
@@ -117,4 +119,19 @@ for batch_index, current_batch in enumerate(batches):
 
     clean_tmp_folder(tmp_dir)
 
-log_runtime(start_time)
+log_runtime(start_time, label="OCR")
+
+# --- Run ChatGPT batch pipeline at the end ---
+if llm_provider == "chatgpt":
+        from llms.chatgpt import get_client, submit_batch_and_get_output, hydrate_batch_output
+
+
+        logging.info("Submitting all queued ChatGPT batch requests...")
+        client = get_client(api_key or "")
+
+
+        batch_file = submit_batch_and_get_output(client)
+        if batch_file:
+            hydrate_batch_output(output_dir=output_dir or "output", batch_output_file=batch_file)
+else:
+        logging.warning("No batch output file available to hydrate.")
