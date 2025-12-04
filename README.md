@@ -14,7 +14,6 @@ It extracts raw text from scanned documents (e.g. historical theater letters), c
 - **Multiple LLM providers** for post-processing:  
   - OpenAI ChatGPT  
   - Anthropic Claude  
-  - Local LLaMA via Ollama  
 - **Pre-processing**:  
   - Converts `.jpg/.png/.tiff` images to `.pdf` via ImageMagick  
 - **Post-processing**:  
@@ -32,30 +31,74 @@ It extracts raw text from scanned documents (e.g. historical theater letters), c
 
 ---
 
+## How the Pipeline Works (Batch Flow)
+
+This pipeline operates in three major phases, repeated for every batch of documents:
+
+1. OCR Phase (AWS Textract or Azure Document Intelligence)
+
+For each file in the batch:
+- Images (.jpg, .png, .tif) → converted to PDF
+- PDF → uploaded to S3 (AWS only)
+- OCR is performed
+
+The pipeline produces:
+- `file.raw.txt` — raw extracted text
+- `file.coords.json` — bounding box geometry
+
+If `SKIP_OCR_IF_EXISTS=true` and both files exist, OCR is skipped.
+
+2. LLM Phase (Batch 1: Text Correction)
+
+The pipeline queues all correction tasks from the current batch into a single LLM batch request (ChatGPT or Claude):
+
+- Fixes OCR mistakes
+- Preserves original meaning
+- No added or inferred content
+
+Produces:
+- `file.corrected.txt`
+
+After the batch completes, results are hydrated into the output directory.
+
+3. LLM Phase (Batch 2: Entity Extraction + Letter Splitting)
+
+After corrected text is available:
+
+- Extracts structured metadata (People, Productions, Dates, Companies, Theaters)
+- Splits multi-letter pages into multiple logical letters
+
+Produces:
+- `file.entities.json`
+- `file.combined_output.json`
+
+All tasks for the batch are combined into one LLM batch submission and hydrated afterward.
+
+---
+
 ## Project Structure
 
 ```
 ocr-processing-pipeline/
 ├── logs/                         # Runtime logs
+├── input/                        # Input directory with files to be run in pipeline
 ├── output/                       # Output text, JSON, corrected results
 ├── venv/                         # Virtual environment (not tracked in version control)
 ├── .env                          # Environment config
 ├── .gitignore
 ├── PROJECT_STRUCTURE.md
 ├── README.md
-├── input
+├── tmp/                          # tmp files created during the ocr process
+├── batchfiles/                   # Batchfiles created from the llm providers
 ├── llms
 │   ├── chatgpt.py                # OpenAI GPT integration
 │   ├── claude.py                 # Anthropic Claude integration
-│   └── llama.py                  # Local LLaMA (Ollama) integration
 ├── main.py                       # Entry point for the pipeline
 ├── ocr_providers                 # OCR backends
 │   ├── aws_provider.py           # AWS Textract implementation
 │   └── azure_provider.py         # Azure Document Intelligence implementation
 ├── prompts.json                  # Shared LLM prompts
 ├── requirements.txt              # Python dependencies
-├── schemas
-│   └── llm_schemas.py            # Pydantic schemas for structured outputs
 └── utils
     ├── aws_utils.py              # AWS helpers
     └── helpers.py                # File prep, batching, logging
@@ -199,33 +242,53 @@ The CLAUDE_MODEL can be swapped with other Claude models.
 
 ---
 
-## LLaMA (Ollama) Setup
+## LLM Prompt Behaviors (What Each Prompt Does)
+The pipeline uses three core prompts defined in `prompts.json`.
 
-LLaMA is Meta’s open-source LLM. This pipeline integrates via Ollama, which runs models locally.
+1. Text Correction Prompt (correct_text)
 
-### Install Ollama
+Purpose:
+- Fix OCR artifacts
+- Correct broken words, extra spacing, punctuation errors
+- No new content is ever added
+- If uncertain → leave text unchanged
 
-Follow instructions at ollama.ai/download to install on macOS/Linux.
+Output becomes `file.corrected.txt`.
 
-### Pull a Model
+2. Entity Extraction + Explanation (extract_and_explain_entities)
 
-For example:
+Purpose:
 
-```
-ollama pull llama3.1:8b
-```
+  Identify and explain:
+  - People
+  - Productions
+  - Companies
+  - Theaters
+  - Dates
 
-### Set Environment Variables
+  Provide accurate historical context, not just context from the letter
+  - Attempt to include a reliable source
+  - Output must be valid JSON only
 
-In your `.env` file, add the following:
+Results saved in `file.entities.json`.
 
-```env
-LLAMA_MODEL=llama3.1:8b
-```
+3. Letter Splitting Prompt (split_letters)
 
-No API key is needed — Ollama runs locally.
+Purpose:
+
+- Detect how many individual letters appear in the text
+
+- Split based on:
+  - Greetings (Dear Sir, Gentlemen, Friend, etc.)
+  - Addresses / headings
+  - Closings (Yours truly, Sincerely, etc.)
+
+- Output must be a JSON array of strings, each one full letter
+
+Saved in `file.combined_output.json`.
 
 ---
+
 
 1. Set up your .env file with the following keys:
 
@@ -241,7 +304,9 @@ IMAGE_MAGICK_COMMAND=magick   # "convert" on Linux
 # OCR provider: aws | azure
 OCR_PROVIDER=aws
 
-# LLM provider: chatgpt | claude | llama
+SKIP_OCR_IF_EXISTS=true
+
+# LLM provider: chatgpt | claude
 LLM_PROVIDER=chatgpt
 
 # AWS (only if OCR_PROVIDER=aws)
@@ -252,6 +317,10 @@ AWS_SECRET_ACCESS_KEY=EXAMPLESECRETACCESSKEY (optional)
 TEXTRACT_MAX_RETRIES=120
 TEXTRACT_DELAY=5
 
+# Azure Document Intelligence (only if OCR_PROVIDER=azure)
+AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT=https://azure-ocr......com/
+AZURE_DOCUMENT_INTELLIGENCE_KEY=your-azure-key
+
 # OpenAI (only if LLM_PROVIDER=chatgpt)
 OPENAI_API_KEY=your-openai-key
 OPENAI_MODEL=gpt-4o-mini
@@ -259,9 +328,6 @@ OPENAI_MODEL=gpt-4o-mini
 # Anthropic (only if LLM_PROVIDER=claude)
 ANTHROPIC_API_KEY=your-anthropic-key
 CLAUDE_MODEL=claude-3-7-sonnet-20250219
-
-# Ollama (only if LLM_PROVIDER=llama)
-LLAMA_MODEL=llama3.1:8b
 
 ```
 
@@ -276,6 +342,7 @@ LLAMA_MODEL=llama3.1:8b
 | `OUTPUT_DIR`                         | Folder where the corrected text, entities and other output is stored.                   |
 | `IMAGE_MAGICK_COMMAND`               | CLI command for ImageMagick (`magick` on macOS, `convert` on Linux).                    |
 | `OCR_PROVIDER`                       | Provider for the OCR Service                                                            |
+| `SKIP_OCR_IF_EXISTS`                 | Skip OCR step if the raw text and coordinate files already exist                        |
 | `LLM_PROVIDER`                       | Provider for the LLM Service                                                            |
 
 | AWS Variables                        | Description                                                                             |
@@ -302,10 +369,6 @@ LLAMA_MODEL=llama3.1:8b
 | `ANTHROPIC_API_KEY`                   | Your Anthropic API key for accessing Claude models.                                    |
 | `CLAUDE_MODEL`                        | Claude model to use.                                                                   |
 
-| LLAMA Variables                       | Description                                                                            |
-| ------------------------------------- | -------------------------------------------------------------------------------------- |
-| `LLAMA_MODEL`                         | Llama model to use.                                                                    |
-
 
 1. Run the pipeline:
 ```
@@ -320,11 +383,22 @@ python main.py
 Logs: /logs/MM-DD-YYYY_HH-MM-SS.log
 Outputs: stored in OUTPUT_DIR/<filename>/
 
-Outputs:
+Output Structure (What the Pipeline Generates):
 
-- .raw.txt (original raw text output)
+Each processed file receives its own folder under OUTPUT_DIR, containing all OCR + LLM results.
+
+```
+output/
+└── LetterBook_L-01_0175/
+    ├── LetterBook_L-01_0175.raw.txt
+    ├── LetterBook_L-01_0175.corrected.txt
+    ├── LetterBook_L-01_0175.coords.json
+    ├── LetterBook_L-01_0175.entities.json
+    └── LetterBook_L-01_0175.combined_output.json
+```
+
+- .raw.txt (Raw OCR output, uncorrected)
 - .corrected.txt (llm-corrected text)
-- .coords.json (bounding box info)
-- .entities.json (structured entities)
-- .entities_explained.json (structured entities explained)
-- .combined_output.json (page numbers and split letters)
+- .coords.json (Word-level bounding boxes from OCR)
+- .entities.json (Structured metadata extracted by LLM)
+- .combined_output.json (All detected letters broken into segments)
