@@ -1,6 +1,6 @@
 # Modular OCR Processing Pipeline
 
-A batch pipeline that transcribes scanned, handwritten and typed documents (originally the Shubert Brothers archive, roughly 60,000 pages) and extracts structured entities from them.
+A batch pipeline that transcribes scanned, handwritten and typed documents and extracts structured entities from them.
 
 The production setup uses **Google Gemini** (`gemini-3.1-pro-preview`) through the **Batch API**, which is half the price of standard calls. Each image goes through two steps:
 
