@@ -1,22 +1,21 @@
 .
-├── .env
-├── .gitignore
-├── PROJECT_STRUCTURE.md
-├── README.md
-├── input
-├── llms
-│   ├── chatgpt.py
-│   ├── claude.py
+modular-ocr-processing-pipeline/
+├── count_processed.py
+├── llms/
+│   ├── chatgpt.py
+│   ├── chatgpt2.py
+│   ├── claude.py
+│   ├── claude2.py
+│   └── gemini.py
 ├── main.py
-├── ocr_providers
-│   ├── aws_provider.py
-│   └── azure_provider.py
+├── ocr_providers/
+│   ├── aws_provider.py
+│   └── azure_provider.py
+├── PROJECT_STRUCTURE.md
 ├── prompts.json
+├── README.md
 ├── requirements.txt
-├── schemas
-│   └── llm_schemas.py
-└── utils
+├── run_batch_directories.py
+└── utils/
     ├── aws_utils.py
     └── helpers.py
-
-7 directories, 20 files

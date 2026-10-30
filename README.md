@@ -1,404 +1,237 @@
 # Modular OCR Processing Pipeline
 
-This project is a **modular, batch OCR (Optical Character Recognition) pipeline** that can use multiple providers for both OCR and LLM (Large Language Model) post-processing.  
+A batch pipeline that transcribes scanned, handwritten and typed documents (originally the Shubert Brothers archive, roughly 60,000 pages) and extracts structured entities from them.
 
-It extracts raw text from scanned documents (e.g. historical theater letters), corrects OCR errors, and structures key entities like people, productions, companies, theaters, and dates.  
+The production setup uses **Google Gemini** (`gemini-3.1-pro-preview`) through the **Batch API**, which is half the price of standard calls. Each image goes through two steps:
 
----
+1. **Transcription**: Gemini reads the image and returns the text verbatim, preserving the author's spelling, punctuation and line breaks. Unreadable text is marked `[illegible]`.
+2. **Entity extraction**: Gemini reads the transcription and returns structured JSON for people, productions, companies, theaters and dates.
 
-## Features
-
-- **Multiple OCR providers**:  
-  - AWS Textract (requires S3 + Textract setup)  
-  - Azure Document Intelligence  
-- **Multiple LLM providers** for post-processing:  
-  - OpenAI ChatGPT  
-  - Anthropic Claude  
-- **Pre-processing**:  
-  - Converts `.jpg/.png/.tiff` images to `.pdf` via ImageMagick  
-- **Post-processing**:  
-  - Corrects OCR errors  
-  - Extracts structured entities (names, productions, dates, etc.)  
-  - Splits corrected text into letters per page  
-- **Batch support** with configurable size and multithreaded execution  
-- **Structured outputs**:  
-  - `.raw.txt` – raw OCR text  
-  - `.corrected.txt` – LLM-corrected text  
-  - `.coords.json` – bounding box coordinates (from OCR)  
-  - `.entities.json` – structured metadata  
-  - `.combined_output.json` – split letters with page references  
-- **Logging**: all operations logged to timestamped log files  
+There is no separate OCR service, no raw-text pass and no letter splitting.
 
 ---
 
-## How the Pipeline Works (Batch Flow)
+## Output
 
-This pipeline operates in three major phases, repeated for every batch of documents:
+Every image gets its own folder with exactly two files:
 
-1. OCR Phase (AWS Textract or Azure Document Intelligence)
+```
+<output folder>/
+└── LS_EuroTrip1951_B01_F02_009/
+    ├── LS_EuroTrip1951_B01_F02_009.corrected.txt   # verbatim transcription
+    └── LS_EuroTrip1951_B01_F02_009.entities.json   # structured entities (valid JSON)
+```
 
-For each file in the batch:
-- Images (.jpg, .png, .tif) → converted to PDF
-- PDF → uploaded to S3 (AWS only)
-- OCR is performed
-
-The pipeline produces:
-- `file.raw.txt` — raw extracted text
-- `file.coords.json` — bounding box geometry
-
-If `SKIP_OCR_IF_EXISTS=true` and both files exist, OCR is skipped.
-
-2. LLM Phase (Batch 1: Text Correction)
-
-The pipeline queues all correction tasks from the current batch into a single LLM batch request (ChatGPT or Claude):
-
-- Fixes OCR mistakes
-- Preserves original meaning
-- No added or inferred content
-
-Produces:
-- `file.corrected.txt`
-
-After the batch completes, results are hydrated into the output directory.
-
-3. LLM Phase (Batch 2: Entity Extraction + Letter Splitting)
-
-After corrected text is available:
-
-- Extracts structured metadata (People, Productions, Dates, Companies, Theaters)
-- Splits multi-letter pages into multiple logical letters
-
-Produces:
-- `file.entities.json`
-- `file.combined_output.json`
-
-All tasks for the batch are combined into one LLM batch submission and hydrated afterward.
+Each output folder also gets a `run_summary.json` with provider, model, document count, token usage, cost, duration and the audit result.
 
 ---
 
 ## Project Structure
 
 ```
-ocr-processing-pipeline/
-├── logs/                         # Runtime logs
-├── input/                        # Input directory with files to be run in pipeline
-├── output/                       # Output text, JSON, corrected results
-├── venv/                         # Virtual environment (not tracked in version control)
-├── .env                          # Environment config
-├── .gitignore
+modular-ocr-processing-pipeline/
+├── main.py                      # Processes ONE input folder (or one file) end to end
+├── run_batch_directories.py     # Runs main.py across the whole archive, then audits the result
+├── count_processed.py           # Quick count of .corrected.txt files produced so far
+├── prompts.json                 # gemini_transcribe and extract_and_explain_entities prompts
+├── requirements.txt
 ├── PROJECT_STRUCTURE.md
 ├── README.md
-├── tmp/                          # tmp files created during the ocr process
-├── batchfiles/                   # Batchfiles created from the llm providers
-├── llms
-│   ├── chatgpt.py                # OpenAI GPT integration
-│   ├── claude.py                 # Anthropic Claude integration
-├── main.py                       # Entry point for the pipeline
-├── ocr_providers                 # OCR backends
-│   ├── aws_provider.py           # AWS Textract implementation
-│   └── azure_provider.py         # Azure Document Intelligence implementation
-├── prompts.json                  # Shared LLM prompts
-├── requirements.txt              # Python dependencies
-└── utils
-    ├── aws_utils.py              # AWS helpers
-    └── helpers.py                # File prep, batching, logging
-
+├── llms/
+│   ├── gemini.py                # Production provider (Batch API)
+│   ├── claude2.py               # Claude, same consolidated flow (used for cost comparison)
+│   ├── chatgpt2.py              # ChatGPT, same consolidated flow (used for cost comparison)
+│   ├── claude.py                # Legacy, used with an OCR provider
+│   └── chatgpt.py               # Legacy, used with an OCR provider
+├── ocr_providers/               # Legacy OCR backends
+│   ├── aws_provider.py
+│   └── azure_provider.py
+└── utils/
+    ├── helpers.py               # Logging, batching, image resize, completeness audit
+    └── aws_utils.py             # Legacy AWS helpers
 ```
+
+Created at runtime: `logs/`, `tmp/`, `batchfiles/` (batch request files and the pending-job ledger) and the output folders.
 
 ---
 
 ## Setup
 
-1. Clone the repository:
-
 ```bash
 git clone https://github.com/SelinaMangaroo/modular-ocr-processing-pipeline.git
 cd modular-ocr-processing-pipeline
-```
-
-2. Create a virtual environment and install dependencies:
-
-```
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
-**ImageMagick** must be installed system-wide, it's not a Python package.
 
+**ImageMagick** must be installed system-wide. It is not a Python package.
+
+```bash
+brew install imagemagick       # macOS
+sudo apt install imagemagick   # Linux
 ```
-brew install imagemagick # macOS
-sudo apt install imagemagick  # Linux
-```
+
+
+### Gemini API key
+
+Create a key in [Google AI Studio](https://aistudio.google.com/). If the key belongs to an organization's Google Cloud project, the Gemini API must be enabled on that project and allowed in the key's API restrictions, otherwise calls fail with a 403 `SERVICE_DISABLED` error.
 
 ---
 
-## AWS Setup (Textract + S3)
-
-To use this OCR pipeline, you'll need to configure your AWS account with access to both **Amazon Textract** and **Amazon S3**.
-
-Textract is a machine learning service from AWS, to extract printed text and data from scanned documents. The script interacts with Textract and S3 using **Boto3**, the official AWS SDK for Python.
-
-### Create an IAM User
-
-Go to the [AWS IAM Console](https://console.aws.amazon.com/iam/):
-
-- Create a new IAM user or use an existing one.
-- Attach the following permissions:
-  - `AmazonTextractFullAccess`
-  - `AmazonS3FullAccess`
-- Generate **Access Key ID** and **Secret Access Key** to set as environment variables
-
-Alternatively if you do not want to set the Access Key ID and Secret Access Key as environment variables, you can store the credentials locally on your machine at `~/.aws/credentials`
-
-Because boto3 follows AWS's default credential provider chain, it automatically uses the credentials from ~/.aws/credentials when no aws_access_key_id or aws_secret_access_key are explicitly passed.
-
-If you’re switching between .env and ~/.aws/credentials, the environment variables will take precedence if both are present.
-
-In ``~/.aws/credentials``
-```
-[default]
-aws_access_key_id = YOUR_ACCESS_KEY_ID
-aws_secret_access_key = YOUR_SECRET_ACCESS_KEY
-```
-
-### Create an S3 Bucket
-
-Go to the S3 Console:
-
-Create a new bucket or use an existing one.
-
-Ensure your IAM user has read/write access to it.
-
-Textract works with PDF files stored in S3. The pipeline will automatically convert input images to PDFs before sending them to Textract.
-
----
-
-
-## Azure Document Intelligence Setup
-
-Azure’s Document Intelligence service can extract printed/handwritten text and layout information.
-
-### Create a Resource
-
-- Create an Azure account if you don't already have one and go to the Azure Portal
-- Create a Document Intelligence resource.
-- Note down your Endpoint URL and API Key.
-
-### Set Environment Variables
-
-In your .env file:
+## Configuration (`.env`)
 
 ```env
-AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT=https://<your-resource-name>.cognitiveservices.azure.com/
-AZURE_DOCUMENT_INTELLIGENCE_KEY=your-azure-api-key
-```
-
-The pipeline uses the prebuilt-read model by default.
-
----
-
-## OpenAI API Setup (ChatGPT)
-
-The ChatGPT API is integrated via the `openai` Python package to post-process text extracted by Textract.
-This pipeline uses the OpenAI ChatGPT API to:
-- Correct OCR errors (e.g. misspellings, broken words)
-- Extract structured entities like names, dates, companies, and locations
-
-### Get an API Key
-
-- Create an account at [OpenAI](https://platform.openai.com/).
-- Go to your [API Keys page](https://platform.openai.com/account/api-keys) and generate a new key.
-
-### Set Environment Variables
-
-In your `.env` file, add the following:
-
-```env
-OPENAI_API_KEY=your-openai-api-key
-OPENAI_MODEL=gpt-4o-mini  # or gpt-4, gpt-3.5-turbo, etc.
-```
-
----
-
-## Anthropic Claude Setup
-
-Claude is Anthropic’s LLM, accessed via the Anthropic Python SDK.
-
-### Get an API Key
-
-Create an account at Anthropic.
-Go to your API Keys page and generate a key.
-
-### Set Environment Variables
-
-In your `.env` file, add the following:
-
-```env
-ANTHROPIC_API_KEY=your-anthropic-api-key
-CLAUDE_MODEL=claude-3-7-sonnet-20250219
-```
-
-The CLAUDE_MODEL can be swapped with other Claude models.
-
----
-
-## LLM Prompt Behaviors (What Each Prompt Does)
-The pipeline uses three core prompts defined in `prompts.json`.
-
-1. Text Correction Prompt (correct_text)
-
-Purpose:
-- Fix OCR artifacts
-- Correct broken words, extra spacing, punctuation errors
-- No new content is ever added
-- If uncertain → leave text unchanged
-
-Output becomes `file.corrected.txt`.
-
-2. Entity Extraction + Explanation (extract_and_explain_entities)
-
-Purpose:
-
-  Identify and explain:
-  - People
-  - Productions
-  - Companies
-  - Theaters
-  - Dates
-
-  Provide accurate historical context, not just context from the letter
-  - Attempt to include a reliable source
-  - Output must be valid JSON only
-
-Results saved in `file.entities.json`.
-
-3. Letter Splitting Prompt (split_letters)
-
-Purpose:
-
-- Detect how many individual letters appear in the text
-
-- Split based on:
-  - Greetings (Dear Sir, Gentlemen, Friend, etc.)
-  - Addresses / headings
-  - Closings (Yours truly, Sincerely, etc.)
-
-- Output must be a JSON array of strings, each one full letter
-
-Saved in `file.combined_output.json`.
-
----
-
-
-1. Set up your .env file with the following keys:
-
-```
 # General
-MAX_THREADS=8
-BATCH_SIZE=10
+MAX_THREADS=8                  # image resize/upload threads inside one folder
+BATCH_SIZE=30                  # images per Gemini batch job
 TMP_DIR=./tmp
-INPUT_DIR=./input
-OUTPUT_DIR=./output
-IMAGE_MAGICK_COMMAND=magick   # "convert" on Linux
+IMAGE_MAGICK_COMMAND=convert   # "magick" on macOS, "convert" on Linux
+SKIP_OCR_IF_EXISTS=true        # reuse existing transcriptions and valid entities on reruns
 
-# OCR provider: aws | azure
-OCR_PROVIDER=aws
+# Provider
+LLM_PROVIDER=gemini
+GEMINI_API_KEY=your-gemini-key
+GEMINI_MODEL=gemini-3.1-pro-preview
+GEMINI_OCR_THINKING_LEVEL=low
+GEMINI_TEXT_THINKING_LEVEL=low
 
-SKIP_OCR_IF_EXISTS=true
+# Single folder or single file (used when running main.py directly)
+INPUT_DIR=/path/to/folder/or/image.jpg
+OUTPUT_DIR=/path/to/output
 
-# LLM provider: chatgpt | claude
-LLM_PROVIDER=chatgpt
-
-# AWS (only if OCR_PROVIDER=aws)
-BUCKET_NAME=your-s3-bucket
-REGION=us-east-1
-AWS_ACCESS_KEY_ID=EXAMPLEACCESSKEYID (optional)
-AWS_SECRET_ACCESS_KEY=EXAMPLESECRETACCESSKEY (optional)
-TEXTRACT_MAX_RETRIES=120
-TEXTRACT_DELAY=5
-
-# Azure Document Intelligence (only if OCR_PROVIDER=azure)
-AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT=https://azure-ocr......com/
-AZURE_DOCUMENT_INTELLIGENCE_KEY=your-azure-key
-
-# OpenAI (only if LLM_PROVIDER=chatgpt)
-OPENAI_API_KEY=your-openai-key
-OPENAI_MODEL=gpt-4o-mini
-
-# Anthropic (only if LLM_PROVIDER=claude)
-ANTHROPIC_API_KEY=your-anthropic-key
-CLAUDE_MODEL=claude-3-7-sonnet-20250219
-
+# Whole-archive runs (used by run_batch_directories.py)
+BATCH_SOURCE_ROOT=/thunderbolt/shubert_aug_2026/shubert
+BATCH_OUTPUT_ROOT=/data/modular-ocr-processing-pipeline/Official Gemini Output
+BATCH_CONCURRENCY=5
+# BATCH_LIMIT=2
+# BATCH_FORCE=false
+# BATCH_DRY_RUN=false
 ```
 
-### Environment Variable Explanations
+| Variable | Description |
+| --- | --- |
+| `MAX_THREADS` | Threads used to resize and upload images within a folder. |
+| `BATCH_SIZE` | Images per Gemini batch job. |
+| `IMAGE_MAGICK_COMMAND` | ImageMagick command (`convert` on Linux, `magick` on macOS). |
+| `SKIP_OCR_IF_EXISTS` | Skip transcription for images that already have a `.corrected.txt`, and skip entity extraction for images that already have a valid `.entities.json`. |
+| `GEMINI_OCR_THINKING_LEVEL`, `GEMINI_TEXT_THINKING_LEVEL` | Gemini 3.1 Pro defaults to high thinking, which is billed as output tokens. `low` keeps cost down. |
+| `INPUT_DIR`, `OUTPUT_DIR` | Used by `main.py`. `INPUT_DIR` can be a folder or a single image. |
+| `BATCH_SOURCE_ROOT` | Top-level folder to scan. Must be an absolute path. The scan finds every folder named exactly `JPG` at any depth. |
+| `BATCH_OUTPUT_ROOT` | Where the `output-*` folders are created. |
+| `BATCH_CONCURRENCY` | How many folders run in parallel (default 5). |
+| `BATCH_LIMIT`, `BATCH_FORCE`, `BATCH_DRY_RUN` | Environment versions of `--limit`, `--force` and `--dry-run`. |
 
-| General Variables                    | Description                                                                             |
-| ------------------------------------ | --------------------------------------------------------------------------------------- |
-| `MAX_THREADS`                        | Number of threads to use for parallel processing. Improves speed for large batches.     |
-| `BATCH_SIZE`                         | Number of documents to process per batch. Helps control memory and API usage.           |
-| `TMP_DIR`                            | Local temporary folder used for processing intermediate files.                          |
-| `INPUT_DIR`                          | Local folder containing input images or PDFs for processing.                            |
-| `OUTPUT_DIR`                         | Folder where the corrected text, entities and other output is stored.                   |
-| `IMAGE_MAGICK_COMMAND`               | CLI command for ImageMagick (`magick` on macOS, `convert` on Linux).                    |
-| `OCR_PROVIDER`                       | Provider for the OCR Service                                                            |
-| `SKIP_OCR_IF_EXISTS`                 | Skip OCR step if the raw text and coordinate files already exist                        |
-| `LLM_PROVIDER`                       | Provider for the LLM Service                                                            |
-
-| AWS Variables                        | Description                                                                             |
-| ------------------------------------ | --------------------------------------------------------------------------------------- |
-| `AWS_ACCESS_KEY_ID` *(optional)*     | AWS IAM access key. Required only if not using `~/.aws/credentials`.                    |
-| `AWS_SECRET_ACCESS_KEY` *(optional)* | AWS IAM secret access key. Only used if the above is set.                               |
-| `BUCKET_NAME`                        | Name of the S3 bucket used to upload PDFs and receive Textract output.                  |
-| `REGION`                             | AWS region where your S3 bucket and Textract are hosted (e.g., `us-east-1`).            |
-| `TEXTRACT_MAX_RETRIES`               | Max retries while polling for Textract job completion.                                  |
-| `TEXTRACT_DELAY`                     | Delay (in seconds) between retries while waiting for Textract to finish.                |
-
-| Azure Variables                       | Description                                                                            |
-| ------------------------------------- | -------------------------------------------------------------------------------------- |
-| `AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT`| Endpoint needed for the Read API Service.                                              |
-| `AZURE_DOCUMENT_INTELLIGENCE_KEY`     | Key needed for the Read API Service.                                                   |
-
-| OpenAI Variables                      | Description                                                                            |
-| ------------------------------------- | -------------------------------------------------------------------------------------- |
-| `OPENAI_API_KEY`                      | Your OpenAI API key for accessing GPT models.                                          |
-| `OPENAI_MODEL`                        | GPT model to use (`gpt-4o-mini`, `gpt-4`, `gpt-3.5-turbo`, etc.).                      |
-
-| Claude Variables                      | Description                                                                            |
-| ------------------------------------- | -------------------------------------------------------------------------------------- |
-| `ANTHROPIC_API_KEY`                   | Your Anthropic API key for accessing Claude models.                                    |
-| `CLAUDE_MODEL`                        | Claude model to use.                                                                   |
-
-
-1. Run the pipeline:
-```
-python main.py
-```
+`python-dotenv` never overrides variables already set in the shell. A stray exported variable (for example an empty `ANTHROPIC_API_KEY`) will shadow `.env`, so `unset` it if values look ignored. The batch driver passes `INPUT_DIR` and `OUTPUT_DIR` to each folder run itself, so those two do not need editing between folders.
 
 ---
 
+## Running
 
-## Logs & Outputs
+### One folder or one image
 
-Logs: /logs/MM-DD-YYYY_HH-MM-SS.log
-Outputs: stored in OUTPUT_DIR/<filename>/
-
-Output Structure (What the Pipeline Generates):
-
-Each processed file receives its own folder under OUTPUT_DIR, containing all OCR + LLM results.
-
-```
-output/
-└── LetterBook_L-01_0175/
-    ├── LetterBook_L-01_0175.raw.txt
-    ├── LetterBook_L-01_0175.corrected.txt
-    ├── LetterBook_L-01_0175.coords.json
-    ├── LetterBook_L-01_0175.entities.json
-    └── LetterBook_L-01_0175.combined_output.json
+```bash
+python main.py        # uses INPUT_DIR / OUTPUT_DIR from .env
 ```
 
-- .raw.txt (Raw OCR output, uncorrected)
-- .corrected.txt (llm-corrected text)
-- .coords.json (Word-level bounding boxes from OCR)
-- .entities.json (Structured metadata extracted by LLM)
-- .combined_output.json (All detected letters broken into segments)
+### The whole archive
+
+For a JPG folder at `.../<CollectionName_BXX_FYY>/JPG`, the output goes to `<BATCH_OUTPUT_ROOT>/output-shubert-<CollectionName_BXX_FYY>`.
+
+```bash
+tmux new -s shubert
+source .venv/bin/activate
+
+python run_batch_directories.py --dry-run     # list what would run, spend nothing
+python run_batch_directories.py --limit 2     # test on the first 2 folders and spot-check the text
+python run_batch_directories.py               # full run
+```
+
+Detach from tmux with `Ctrl+B` then `D`, and reattach with `tmux attach -t shubert`. The run keeps going if your connection drops.
+
+| Flag | Description |
+| --- | --- |
+| `--source-root`, `--output-root` | Override `BATCH_SOURCE_ROOT` / `BATCH_OUTPUT_ROOT`. |
+| `--dry-run` | Show the plan without processing. |
+| `--limit N` | Process only the first N folders needing work. |
+| `--force` | Rerun folders even if they are already complete. |
+| `--concurrency N` | Folders processed in parallel. |
+| `--audit-only` | Process nothing. Compare all source images with outputs and report gaps. |
+
+A folder counts as **done** only when every image in it has a valid `.corrected.txt` and `.entities.json`. Rerunning the driver always picks up exactly the folders with gaps and skips finished work.
+
+---
+
+## Making Sure Everything Was Processed
+
+Completeness is checked automatically, not by inspecting folders by hand.
+
+- **End of every folder run (`main.py`)**: each input image is checked. Anything missing is logged as `[AUDIT]` errors, the audit result is saved in `run_summary.json`, and the run exits with an error so the driver lists the folder as FAILED.
+- **End of every driver run (`run_batch_directories.py`)**: all source images are compared against all outputs and the result is printed and logged: folders, source images, fully processed, and missing. Every problem is written to `logs/audit_<timestamp>.csv`, and the run ends with `AUDIT RESULT: PASS` or `FAIL`. The exit code is 1 on any failure.
+- **On demand**: `python run_batch_directories.py --audit-only`.
+
+Problem types in the report:
+
+| Problem | Meaning |
+| --- | --- |
+| `MISSING_CORRECTED`, `MISSING_ENTITIES` | An output file is absent. |
+| `INVALID_ENTITIES_JSON` | `.entities.json` is not valid JSON. |
+| `EMPTY_ENTITIES` | `.entities.json` is `{}`, which the pipeline writes when Gemini's entity output could not be parsed. |
+| `EMPTY_CORRECTED` | Empty transcription (for example a blank page). Listed for human review and does not fail the audit. |
+
+To fix a FAIL, run `python run_batch_directories.py` again. Repeat until the audit passes. The audit proves outputs exist and are valid. It does not judge transcription accuracy, so keep spot-checking text quality. It only sees images inside folders named exactly `JPG`.
+
+---
+
+## Gemini Batch API: What to Expect
+
+- A batch job can finish in minutes or take many hours. Jobs expire after 48 hours, and results stay available for about 6 weeks.
+- There is no web interface for Gemini Developer API batches in Google Cloud. Check status from the logs, which print the job state while polling (`JOB_STATE_PENDING`, `RUNNING`, `SUCCEEDED`, `FAILED`, `CANCELLED`, `EXPIRED`), or through the API with `client.batches.get(name=...)` and `client.batches.list()`.
+- Temporary 503 errors can occur on any call. Polling and downloading retry automatically.
+- A batch can succeed overall while individual requests inside it fail. Those images end up missing outputs, and the audit catches them.
+- Timing reference: 13 folders run concurrently took about 1h54m.
+
+### If a run is interrupted
+
+If a run is killed or a download fails, the images that were in flight are simply missing outputs. Run `python run_batch_directories.py --audit-only` to list the gaps, then run `python run_batch_directories.py` again. Only folders with gaps are reprocessed, and finished images are skipped. Any pages whose batch had already finished on Google's side but was not saved are submitted again and billed again, so run inside tmux to avoid interruptions.
+
+---
+
+## Cost
+
+Batch pricing for `gemini-3.1-pro-preview` is $1.00 per million input tokens and $6.00 per million output tokens (up to 200K context), half the standard rate. Thinking tokens are billed as output, which is why thinking is set to `low`.
+
+- Measured cost is about **$0.058 per page** for transcription plus entities.
+- 60,000 pages comes to roughly **$4,000**.
+- Per-document token counts and estimated cost are written to the log, and each folder's `run_summary.json` has totals.
+
+Because rerunning is skipped for finished work (`SKIP_OCR_IF_EXISTS=true`), recovering gaps costs only the missing pages. Using `--force` together with `SKIP_OCR_IF_EXISTS=false` repays the full cost, so check the page count first.
+
+---
+
+## Prompts (`prompts.json`)
+
+1. **`gemini_transcribe`**: transcribe the image exactly as written, keeping the author's spelling, punctuation, capitalization, wording and line breaks, including mistakes. Genuinely unreadable text becomes `[illegible]`. Output is the text only, with no headers, labels or commentary. Saved as `.corrected.txt`.
+2. **`extract_and_explain_entities`**: identify and explain people, productions, companies, theaters and dates with accurate historical context, output as valid JSON only. Saved as `.entities.json`.
+
+---
+
+## Logs
+
+| File | Contents |
+| --- | --- |
+| `logs/MM-DD-YYYY_HH-MM-SS_pid<PID>.log` | One log per `main.py` run (the process ID prevents collisions between concurrent folders). |
+| `logs/batch_run_<timestamp>.txt` | Master log for a driver run: per-folder OK/FAILED and the audit summary. |
+| `logs/audit_<timestamp>.csv` | Every problem found by the completeness audit. |
+
+---
+
+## Other Providers
+
+`LLM_PROVIDER` accepts `gemini` (production), `claude2` and `chatgpt2`. The latter two use the same flow (vision model transcribes, then extracts entities, via each vendor's batch API) and were used to compare cost across providers. Set the matching `ANTHROPIC_API_KEY` / `CLAUDE_MODEL` or `OPENAI_API_KEY` / `OPENAI_MODEL` to use them.
+
+Measured cost per page for the comparison: Gemini about $0.058, Claude about $0.027, ChatGPT about $0.029. Gemini is the chosen provider.
+
+### Legacy flow (AWS Textract / Azure + ChatGPT / Claude)
+
+`llms/chatgpt.py`, `llms/claude.py` and `ocr_providers/` are the original pipeline: OCR with AWS Textract or Azure Document Intelligence, then LLM correction and letter splitting. They remain in the repo . They produce `.raw.txt`, `.coords.json` and `.combined_output.json`, and they rely on the `correct_text` and `split_letters` prompts, which are no longer in `prompts.json` . Selecting these providers requires `OCR_PROVIDER=aws|azure`, `LLM_PROVIDER=chatgpt|claude`, and the AWS (`BUCKET_NAME`, `REGION`, credentials) or Azure (`AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT`, `AZURE_DOCUMENT_INTELLIGENCE_KEY`) settings.

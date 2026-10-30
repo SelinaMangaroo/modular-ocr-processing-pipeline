@@ -19,7 +19,8 @@ tests/
 
 # Outputs
 output*/    # ignore any folder starting with 'output'
-
+OUTPUT/
+batchfiles/
 input/
 
 tmp/
